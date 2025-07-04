@@ -88,7 +88,7 @@ export async function getAllAttendance() {
   const { data, error } = await supabase
     .from('attendance')
     .select(
-      '*, timetable:lecture(subject, faculty, department, from, to, subjects:subject(code, name, departments(name)), faculty_details:faculty(name)), student:student_id(first_name, last_name, email)'
+      '*, timetable:lecture(subject, faculty, department, from, to, subjects:subject(code, name, departments(name)), faculty_details:faculty(name)), student:student_id(Student_Name, Guardian_Email, Roll_No, Department)'
     );
   if (error) throw error;
   if (!data || data.length === 0) return [];
@@ -102,9 +102,11 @@ export async function getAllAttendance() {
       department_name: timetable?.subjects?.departments?.name,
       from: timetable?.from,
       to: timetable?.to,
-      student_first_name: student?.first_name,
-      student_last_name: student?.last_name,
-      student_email: student?.email,
+      student_first_name: student?.Student_Name?.split(' ')[0] || '',
+      student_last_name: student?.Student_Name?.split(' ').slice(1).join(' ') || '',
+      student_email: student?.Guardian_Email,
+      student_roll_no: student?.Roll_No,
+      student_department: student?.Department,
     };
   });
 }
@@ -115,7 +117,7 @@ export async function getAttendanceById(id: string) {
   const { data, error } = await supabase
     .from('attendance')
     .select(
-      '*, timetable:lecture(subject, faculty, department, from, to, subjects:subject(code, name, departments(name)), faculty_details:faculty(name)), student:student_id(first_name, last_name, email)'
+      '*, timetable:lecture(subject, faculty, department, from, to, subjects:subject(code, name, departments(name)), faculty_details:faculty(name)), student:student_id(Student_Name, Guardian_Email, Roll_No, Department)'
     )
     .eq('id', id)
     .maybeSingle(); // Use maybeSingle to avoid error if not found
@@ -130,9 +132,11 @@ export async function getAttendanceById(id: string) {
     department_name: timetable?.subjects?.departments?.name,
     from: timetable?.from,
     to: timetable?.to,
-    student_first_name: student?.first_name,
-    student_last_name: student?.last_name,
-    student_email: student?.email,
+    student_first_name: student?.Student_Name?.split(' ')[0] || '',
+    student_last_name: student?.Student_Name?.split(' ').slice(1).join(' ') || '',
+    student_email: student?.Guardian_Email,
+    student_roll_no: student?.Roll_No,
+    student_department: student?.Department,
   };
 }
 

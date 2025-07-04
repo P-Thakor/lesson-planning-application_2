@@ -5,20 +5,25 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Calendar } from "lucide-react";
+import { Calendar, Loader2, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 
 // Types for real data
 interface StudentData {
-  student_id: string;
-  first_name: string;
-  last_name: string;
-  email: string;
-  division: string;
+  studentId: string;
+  rollNo: string;
+  name: string;
+  email?: string;
+  division: number;
   batch: string;
-  sem: number;
-  departments?: {
-    name: string;
-  };
+  semester: number;
+  department: string;
+  counselor?: string;
+  attendancePercentage: number;
+  status: 'Critical' | 'Warning' | 'Good' | 'Excellent';
+  sessionsAttended: number;
+  totalSessions: number;
+  recentAttendance?: any[];
 }
 
 interface AttendanceRecord {
@@ -33,14 +38,27 @@ interface AttendanceRecord {
   student_last_name?: string;
 }
 
-interface ProcessedStudentData {
-  studentId: string;
-  name: string;
-  department: string;
-  attendancePercentage: number;
-  status: 'Critical' | 'Warning' | 'Good' | 'Excellent';
-  sessionsAttended: number;
-  totalSessions: number;
+interface FilterOptions {
+  departments: Array<{id: string, name: string, abbreviation_depart: string}>;
+  subjects: Array<{id: string, code: string, name: string, departments: {name: string}}>;
+  faculty: Array<{id: string, name: string, email: string}>;
+  divisions: number[];
+  batches: string[];
+  semesters: number[];
+  studentIdRanges: Record<string, string>;
+}
+
+interface AttendanceData {
+  students: StudentData[];
+  attendanceRecords: AttendanceRecord[];
+  summary: {
+    totalStudents: number;
+    excellentCount: number;
+    goodCount: number;
+    warningCount: number;
+    criticalCount: number;
+    averageAttendance: number;
+  };
 }
 
 export default function ClientAttendanceMonitor() {
@@ -52,248 +70,110 @@ export default function ClientAttendanceMonitor() {
       year: 'numeric' 
     });
   });
-  const [selectedIdRange, setSelectedIdRange] = useState("24CE001 to 24CE179");
-  const [selectedDepartment, setSelectedDepartment] = useState("Computer Engineering");
-  const [selectedSubject, setSelectedSubject] = useState("CE263 DBMS");
-  const [selectedTeacher, setSelectedTeacher] = useState("Dr.Parth Goel");
-  const [selectedCounselor, setSelectedCounselor] = useState("Dr.Parth Goel");
   
-  // Dummy data for students
-  const dummyStudents: StudentData[] = [
-    {
-      student_id: "24CE001",
-      first_name: "Aarav",
-      last_name: "Patel",
-      email: "aarav.patel@example.com",
-      division: "A",
-      batch: "A1",
-      sem: 5,
-      departments: { name: "Computer Engineering" }
-    },
-    {
-      student_id: "24CE002",
-      first_name: "Priya",
-      last_name: "Shah",
-      email: "priya.shah@example.com",
-      division: "A",
-      batch: "A1",
-      sem: 5,
-      departments: { name: "Computer Engineering" }
-    },
-    {
-      student_id: "24CE003",
-      first_name: "Rohan",
-      last_name: "Mehta",
-      email: "rohan.mehta@example.com",
-      division: "A",
-      batch: "A2",
-      sem: 5,
-      departments: { name: "Computer Engineering" }
-    },
-    {
-      student_id: "24CE004",
-      first_name: "Kavya",
-      last_name: "Desai",
-      email: "kavya.desai@example.com",
-      division: "B",
-      batch: "B1",
-      sem: 5,
-      departments: { name: "Computer Engineering" }
-    },
-    {
-      student_id: "24CE005",
-      first_name: "Arjun",
-      last_name: "Joshi",
-      email: "arjun.joshi@example.com",
-      division: "B",
-      batch: "B1",
-      sem: 5,
-      departments: { name: "Computer Engineering" }
-    },
-    {
-      student_id: "24CE006",
-      first_name: "Ananya",
-      last_name: "Gupta",
-      email: "ananya.gupta@example.com",
-      division: "B",
-      batch: "B2",
-      sem: 5,
-      departments: { name: "Computer Engineering" }
-    },
-    {
-      student_id: "24CE007",
-      first_name: "Karan",
-      last_name: "Singh",
-      email: "karan.singh@example.com",
-      division: "C",
-      batch: "C1",
-      sem: 5,
-      departments: { name: "Computer Engineering" }
-    },
-    {
-      student_id: "24CE008",
-      first_name: "Shruti",
-      last_name: "Agarwal",
-      email: "shruti.agarwal@example.com",
-      division: "C",
-      batch: "C1",
-      sem: 5,
-      departments: { name: "Computer Engineering" }
-    }
-  ];
+  // Filter states
+  const [selectedIdRange, setSelectedIdRange] = useState("All Students");
+  const [selectedDepartment, setSelectedDepartment] = useState("All Departments");
+  const [selectedSubject, setSelectedSubject] = useState("All Subjects");
+  const [selectedTeacher, setSelectedTeacher] = useState("All Teachers");
+  const [selectedCounselor, setSelectedCounselor] = useState("All Counselors");
+  
+  // Data states
+  const [attendanceData, setAttendanceData] = useState<AttendanceData | null>(null);
+  const [filterOptions, setFilterOptions] = useState<FilterOptions | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  // Dummy attendance records
-  const dummyAttendanceRecords: AttendanceRecord[] = [
-    // High attendance student (24CE001)
-    ...Array.from({ length: 18 }, (_, i) => ({
-      id: `att-001-${i}`,
-      student_id: "24CE001",
-      is_present: i < 16, // 16/18 = 88.8%
-      Date: `2024-06-${10 + i}`,
-      subject_code: "CE263",
-      subject_name: "DBMS"
-    })),
-    // Good attendance student (24CE002)
-    ...Array.from({ length: 18 }, (_, i) => ({
-      id: `att-002-${i}`,
-      student_id: "24CE002",
-      is_present: i < 14, // 14/18 = 77.7%
-      Date: `2024-06-${10 + i}`,
-      subject_code: "CE263",
-      subject_name: "DBMS"
-    })),
-    // Warning attendance student (24CE003)
-    ...Array.from({ length: 18 }, (_, i) => ({
-      id: `att-003-${i}`,
-      student_id: "24CE003",
-      is_present: i < 12, // 12/18 = 66.6%
-      Date: `2024-06-${10 + i}`,
-      subject_code: "CE263",
-      subject_name: "DBMS"
-    })),
-    // Critical attendance student (24CE004)
-    ...Array.from({ length: 18 }, (_, i) => ({
-      id: `att-004-${i}`,
-      student_id: "24CE004",
-      is_present: i < 10, // 10/18 = 55.5%
-      Date: `2024-06-${10 + i}`,
-      subject_code: "CE263",
-      subject_name: "DBMS"
-    })),
-    // Excellent attendance student (24CE005)
-    ...Array.from({ length: 18 }, (_, i) => ({
-      id: `att-005-${i}`,
-      student_id: "24CE005",
-      is_present: i < 17, // 17/18 = 94.4%
-      Date: `2024-06-${10 + i}`,
-      subject_code: "CE263",
-      subject_name: "DBMS"
-    })),
-    // Good attendance student (24CE006)
-    ...Array.from({ length: 18 }, (_, i) => ({
-      id: `att-006-${i}`,
-      student_id: "24CE006",
-      is_present: i < 15, // 15/18 = 83.3%
-      Date: `2024-06-${10 + i}`,
-      subject_code: "CE263",
-      subject_name: "DBMS"
-    })),
-    // Warning attendance student (24CE007)
-    ...Array.from({ length: 18 }, (_, i) => ({
-      id: `att-007-${i}`,
-      student_id: "24CE007",
-      is_present: i < 13, // 13/18 = 72.2%
-      Date: `2024-06-${10 + i}`,
-      subject_code: "CE263",
-      subject_name: "DBMS"
-    })),
-    // Critical attendance student (24CE008)
-    ...Array.from({ length: 18 }, (_, i) => ({
-      id: `att-008-${i}`,
-      student_id: "24CE008",
-      is_present: i < 9, // 9/18 = 50%
-      Date: `2024-06-${10 + i}`,
-      subject_code: "CE263",
-      subject_name: "DBMS"
-    }))
-  ];
-  const [students] = useState<StudentData[]>(dummyStudents);
-  const [attendanceRecords] = useState<AttendanceRecord[]>(dummyAttendanceRecords);
-  const [processedData, setProcessedData] = useState<ProcessedStudentData[]>([]);
-  const [loading] = useState(false);
-  const [error] = useState<string | null>(null);
-
-  // Process data whenever students or attendance records change
-  useEffect(() => {
-    if (students.length === 0) return;
-
-    const processStudentData = () => {
-      const processed: ProcessedStudentData[] = students
-        .filter(student => student.student_id != null && student.student_id.trim() !== '') // Filter out undefined/empty student IDs
-        .map(student => {
-          // Filter attendance records for this student
-          const studentAttendance = attendanceRecords.filter(
-            record => record.student_id === student.student_id
-          );
-          
-          const totalSessions = studentAttendance.length;
-          const sessionsAttended = studentAttendance.filter(
-            record => record.is_present
-          ).length;
-          
-          const attendancePercentage = totalSessions > 0 
-            ? Math.round((sessionsAttended / totalSessions) * 100)
-            : 0;
-          
-          // Determine status based on percentage
-          let status: 'Critical' | 'Warning' | 'Good' | 'Excellent';
-          if (attendancePercentage >= 85) status = 'Excellent';
-          else if (attendancePercentage >= 75) status = 'Good';
-          else if (attendancePercentage >= 65) status = 'Warning';
-          else status = 'Critical';
-          
-          return {
-            studentId: student.student_id,
-            name: `${student.first_name} ${student.last_name}`,
-            department: student.departments?.name || 'Unknown',
-            attendancePercentage,
-            status,
-            sessionsAttended,
-            totalSessions
-          };
-        });
+  // Fetch filter options
+  const fetchFilterOptions = async () => {
+    try {
+      const response = await fetch('/api/attendance-monitor/filters');
+      if (!response.ok) throw new Error('Failed to fetch filter options');
       
-      setProcessedData(processed);
+      const result = await response.json();
+      setFilterOptions(result.data);
+    } catch (error) {
+      console.error('Error fetching filter options:', error);
+      toast.error('Failed to load filter options');
+    }
+  };
+
+  // Fetch attendance data
+  const fetchAttendanceData = async () => {
+    try {
+      const params = new URLSearchParams();
+      
+      if (selectedDepartment !== "All Departments") {
+        params.append('department', selectedDepartment);
+      }
+      if (selectedSubject !== "All Subjects") {
+        params.append('subject', selectedSubject);
+      }
+      if (selectedTeacher !== "All Teachers") {
+        params.append('teacher', selectedTeacher);
+      }
+      if (selectedCounselor !== "All Counselors") {
+        params.append('counselor', selectedCounselor);
+      }
+      if (selectedIdRange !== "All Students") {
+        params.append('idRange', selectedIdRange);
+      }
+      if (selectedDate) {
+        params.append('date', selectedDate);
+      }
+      
+      const response = await fetch(`/api/attendance-monitor?${params.toString()}`);
+      if (!response.ok) throw new Error('Failed to fetch attendance data');
+      
+      const result = await response.json();
+      setAttendanceData(result.data);
+      setError(null);
+    } catch (error) {
+      console.error('Error fetching attendance data:', error);
+      setError('Failed to load attendance data');
+      toast.error('Failed to load attendance data');
+    }
+  };
+
+  // Initial data fetch
+  useEffect(() => {
+    const loadInitialData = async () => {
+      setLoading(true);
+      await Promise.all([
+        fetchFilterOptions(),
+        fetchAttendanceData()
+      ]);
+      setLoading(false);
     };
+    
+    loadInitialData();
+  }, []);
 
-    processStudentData();
-  }, [students, attendanceRecords]);// Filter data based on selected filters
-  const filteredData = processedData.filter(student => {
-    // Only include students with valid student IDs
-    if (!student.studentId || student.studentId.trim() === '') {
-      return false;
+  // Refetch data when filters change
+  useEffect(() => {
+    if (!loading && filterOptions) {
+      fetchAttendanceData();
     }
-    
-    const studentData = students.find(s => s.student_id === student.studentId);
-    
-    if (selectedDepartment !== "All Departments" && student.department !== selectedDepartment) {
-      return false;
-    }
-    
-    // Add more specific filtering logic based on the selected filters if needed
-    
-    return true;
-  });
+  }, [selectedDepartment, selectedSubject, selectedTeacher, selectedCounselor, selectedIdRange]);
 
-  // Calculate metrics
-  const attendanceMetrics = {
-    totalSessions: processedData.reduce((sum, student) => sum + student.totalSessions, 0) / Math.max(processedData.length, 1),
-    overallStats: {
-      excellent: filteredData.filter(s => s.status === 'Excellent').length,
-      good: filteredData.filter(s => s.status === 'Good').length,
-      warning: filteredData.filter(s => s.status === 'Warning').length,
-      critical: filteredData.filter(s => s.status === 'Critical').length,
-    }
+  // Refresh data manually
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await fetchAttendanceData();
+    setRefreshing(false);
+    toast.success('Data refreshed successfully');
+  };
+  
+  // Computed data from live API
+  const filteredData = attendanceData?.students || [];
+  const attendanceMetrics = attendanceData?.summary || {
+    totalStudents: 0,
+    excellentCount: 0,
+    goodCount: 0,
+    warningCount: 0,
+    criticalCount: 0,
+    averageAttendance: 0
   };
 
   const getStatusColor = (status: string) => {
@@ -324,21 +204,27 @@ export default function ClientAttendanceMonitor() {
       default:
         return "bg-green-500";
     }
-  };  // Get unique departments for filter (only from students with valid IDs)
-  const departments = Array.from(new Set(
-    students
-      .filter(s => s.student_id != null && s.student_id.trim() !== '')
-      .map(s => s.departments?.name)
-      .filter(Boolean)
-  )) as string[];
+  };
 
   return (
     <div className="p-6">      <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-semibold text-blue-800">
           Attendance Monitor
         </h1>
-        <div className="flex items-center gap-2 text-sm text-gray-600">
-          <span>Showing dummy data for demonstration</span>
+        <div className="flex items-center gap-4">
+          <Button 
+            onClick={handleRefresh} 
+            variant="outline" 
+            size="sm" 
+            disabled={refreshing}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Refreshing...' : 'Refresh Data'}
+          </Button>
+          <div className="text-sm text-gray-600">
+            {loading ? 'Loading...' : error ? 'Error loading data' : 'Live data'}
+          </div>
         </div>
       </div>
       
@@ -374,9 +260,10 @@ export default function ClientAttendanceMonitor() {
                     <SelectValue placeholder="Select ID range" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="24CE001 to 24CE179">24CE001 to 24CE179</SelectItem>
-                    <SelectItem value="24CSE001 to 24CSE160">24CSE001 to 24CSE160</SelectItem>
-                    <SelectItem value="24IT001 to 24IT120">24IT001 to 24IT120</SelectItem>
+                    <SelectItem value="All Students">All Students</SelectItem>
+                    {filterOptions?.studentIdRanges && Object.entries(filterOptions.studentIdRanges).map(([key, value]) => (
+                      <SelectItem key={key} value={key}>{key}: {value}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -389,11 +276,15 @@ export default function ClientAttendanceMonitor() {
                     <SelectValue placeholder="Select department" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Computer Engineering">Computer Engineering</SelectItem>
-                    <SelectItem value="CSE">Computer Science and Engineering</SelectItem>
-                    <SelectItem value="IT">Information Technology</SelectItem>
-                    <SelectItem value="CE">Civil Engineering</SelectItem>
-                    <SelectItem value="ME">Mechanical Engineering</SelectItem>
+                    <SelectItem value="All Departments">All Departments</SelectItem>
+                    {filterOptions?.departments && filterOptions.departments.length > 0 ? 
+                      filterOptions.departments.map((department) => (
+                        <SelectItem key={department.id} value={department.name}>
+                          {department.name}
+                        </SelectItem>
+                      )) : 
+                      <SelectItem value="loading" disabled>Loading departments...</SelectItem>
+                    }
                   </SelectContent>
                 </Select>
               </div>
@@ -406,11 +297,12 @@ export default function ClientAttendanceMonitor() {
                     <SelectValue placeholder="Select subject" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="CE263 DBMS">CE263 DBMS</SelectItem>
-                    <SelectItem value="CE264 OS">CE264 Operating Systems</SelectItem>
-                    <SelectItem value="CE265 CN">CE265 Computer Networks</SelectItem>
-                    <SelectItem value="CE266 SE">CE266 Software Engineering</SelectItem>
-                    <SelectItem value="CE267 TOC">CE267 Theory of Computation</SelectItem>
+                    <SelectItem value="All Subjects">All Subjects</SelectItem>
+                    {filterOptions?.subjects.map((subject) => (
+                      <SelectItem key={subject.id} value={subject.code}>
+                        {subject.code} - {subject.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -423,10 +315,12 @@ export default function ClientAttendanceMonitor() {
                     <SelectValue placeholder="Select teacher" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Dr.Parth Goel">Dr.Parth Goel</SelectItem>
-                    <SelectItem value="Dr.Rashmi Thakkar">Dr.Rashmi Thakkar</SelectItem>
-                    <SelectItem value="Prof.Amit Patel">Prof.Amit Patel</SelectItem>
-                    <SelectItem value="Dr.Snehal Shah">Dr.Snehal Shah</SelectItem>
+                    <SelectItem value="All Teachers">All Teachers</SelectItem>
+                    {filterOptions?.faculty.map((teacher) => (
+                      <SelectItem key={teacher.id} value={teacher.name}>
+                        {teacher.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -439,10 +333,12 @@ export default function ClientAttendanceMonitor() {
                     <SelectValue placeholder="Select counselor" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Dr.Parth Goel">Dr.Parth Goel</SelectItem>
-                    <SelectItem value="Dr.Rashmi Thakkar">Dr.Rashmi Thakkar</SelectItem>
-                    <SelectItem value="Prof.Amit Patel">Prof.Amit Patel</SelectItem>
-                    <SelectItem value="Dr.Snehal Shah">Dr.Snehal Shah</SelectItem>
+                    <SelectItem value="All Counselors">All Counselors</SelectItem>
+                    {filterOptions?.faculty.map((counselor) => (
+                      <SelectItem key={`counselor-${counselor.id}`} value={counselor.name}>
+                        {counselor.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -463,13 +359,13 @@ export default function ClientAttendanceMonitor() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Sessions Info */}
                 <div className="space-y-4">                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded">
-                    <span className="text-sm font-medium">Total sessions conducted:</span>
-                    <span className="font-semibold">18</span>
+                    <span className="text-sm font-medium">Total Students:</span>
+                    <span className="font-semibold">{attendanceMetrics.totalStudents}</span>
                   </div>
-                    <div className="flex items-center justify-between p-3 bg-blue-50 rounded">
+                  <div className="flex items-center justify-between p-3 bg-blue-50 rounded">
                     <span className="text-sm font-medium">Average attendance:</span>
                     <span className="font-semibold text-blue-600">
-                      {Math.round(filteredData.reduce((sum, student) => sum + student.attendancePercentage, 0) / Math.max(filteredData.length, 1))}%
+                      {Math.round(attendanceMetrics.averageAttendance)}%
                     </span>
                   </div>
                 </div>                {/* Overall Statistics */}
@@ -481,21 +377,21 @@ export default function ClientAttendanceMonitor() {
                         <div className="w-3 h-3 bg-green-500 rounded-full"></div>
                         <span>&gt;85%</span>
                       </div>
-                      <span className="font-semibold">{attendanceMetrics.overallStats.excellent}</span>
+                      <span className="font-semibold">{attendanceMetrics.excellentCount}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
                         <span>75-85%</span>
                       </div>
-                      <span className="font-semibold">{attendanceMetrics.overallStats.good}</span>
+                      <span className="font-semibold">{attendanceMetrics.goodCount}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <div className="w-3 h-3 bg-red-500 rounded-full"></div>
                         <span>&lt;75%</span>
                       </div>
-                      <span className="font-semibold">{attendanceMetrics.overallStats.warning + attendanceMetrics.overallStats.critical}</span>
+                      <span className="font-semibold">{attendanceMetrics.warningCount + attendanceMetrics.criticalCount}</span>
                     </div>
                   </div>
                 </div>              </div>
@@ -509,7 +405,7 @@ export default function ClientAttendanceMonitor() {
                 </CardTitle>
                 <div className="text-sm text-gray-600">
                   Showing <span className="font-semibold">{filteredData.length}</span> of{" "}
-                  <span className="font-semibold">{processedData.length}</span> students
+                  <span className="font-semibold">{attendanceMetrics.totalStudents}</span> students
                 </div>
               </div>
             </CardHeader>
@@ -525,7 +421,7 @@ export default function ClientAttendanceMonitor() {
                   </thead>                  <tbody>
                     {filteredData.map((student, index) => (
                       <tr key={student.studentId} className="border-b hover:bg-gray-50">
-                        <td className="p-3 font-medium">{student.studentId}</td>
+                        <td className="p-3 font-medium">{student.rollNo || student.studentId}</td>
                         <td className="p-3">{student.department}</td>
                         <td className="p-3">
                           <div className="flex items-center gap-2">
@@ -548,10 +444,20 @@ export default function ClientAttendanceMonitor() {
                         </td>
                       </tr>
                     ))}
-                    {filteredData.length === 0 && (
+                    {filteredData.length === 0 && !loading && (
                       <tr>
                         <td colSpan={3} className="p-8 text-center text-gray-500">
-                          No student data available with the selected filters
+                          {error ? error : 'No student data available with the selected filters'}
+                        </td>
+                      </tr>
+                    )}
+                    {loading && (
+                      <tr>
+                        <td colSpan={3} className="p-8 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <span>Loading attendance data...</span>
+                          </div>
                         </td>
                       </tr>
                     )}
