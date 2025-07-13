@@ -85,9 +85,18 @@ export async function GET(request: NextRequest) {
     // Get students data
     let students;
     if (department && department !== 'All Departments') {
-      // Convert full department name to abbreviation for database query
+      // Accept both abbreviation and full name for department filter
       const departmentAbbr = getDepartmentAbbreviation(department);
-      students = await getStudentsByDepartment(departmentAbbr);
+      // Get all students and filter in-memory for both abbreviation and full name
+      const allStudents = await getAllStudents();
+      students = allStudents.filter((student: any) => {
+        // Accept if matches abbreviation or full name (case-insensitive)
+        const dept = (student.Department || '').toLowerCase();
+        return (
+          dept === departmentAbbr.toLowerCase() ||
+          dept === department.toLowerCase()
+        );
+      });
     } else {
       students = await getAllStudents();
     }

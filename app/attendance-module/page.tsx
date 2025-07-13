@@ -62,13 +62,24 @@ export default async function AttendanceModulePage() {
   // Fetch timetable for the specified faculty ID using existing backend function
   let timeTableData: Timetable[];
   // console.log('data:', roleData);
-  
+
+  // Get current day as string (e.g., 'Monday')
+  const currentDay = new Date().toLocaleDateString('en-US', { weekday: 'long' });
 
   try {
-    timeTableData = await getTimetablesByFacultyId(
+    const allTimeTableData = await getTimetablesByFacultyId(
       userData.id || userData.auth_id || user.id
     );
-    console.log("Time Table Data:", timeTableData);
+    // Only include lectures and labs for the current day
+    timeTableData = (allTimeTableData || []).filter(
+      (entry: any) => {
+        const entryDay = (entry.day || '').toLowerCase();
+        const today = currentDay.toLowerCase();
+        const type = (entry.type || '').toLowerCase();
+        return entryDay === today && (type === 'lecture' || type === 'lab');
+      }
+    );
+    console.log("Time Table Data (filtered for today):", timeTableData);
   } catch (error) {
     console.error("Error fetching time table data:", error);
     timeTableData = [];

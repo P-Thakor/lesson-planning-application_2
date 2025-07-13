@@ -150,12 +150,35 @@ export default function ClientAttendanceMonitor() {
     loadInitialData();
   }, []);
 
-  // Refetch data when filters change
+
+  // Reset subject filter when department changes, and refetch data
+  useEffect(() => {
+    if (!filterOptions) return;
+    if (selectedDepartment !== "All Departments") {
+      // Only keep subject if it matches the selected department
+      const validSubjects = filterOptions.subjects.filter(
+        (subject) => subject.departments.name === selectedDepartment
+      );
+      if (
+        selectedSubject !== "All Subjects" &&
+        !validSubjects.some((s) => s.code === selectedSubject)
+      ) {
+        setSelectedSubject("All Subjects");
+      }
+    }
+    if (!loading) {
+      fetchAttendanceData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDepartment]);
+
+  // Refetch data when other filters change
   useEffect(() => {
     if (!loading && filterOptions) {
       fetchAttendanceData();
     }
-  }, [selectedDepartment, selectedSubject, selectedTeacher, selectedCounselor, selectedIdRange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSubject, selectedTeacher, selectedCounselor, selectedIdRange, selectedDate]);
 
   // Refresh data manually
   const handleRefresh = async () => {
@@ -298,11 +321,16 @@ export default function ClientAttendanceMonitor() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="All Subjects">All Subjects</SelectItem>
-                    {filterOptions?.subjects.map((subject) => (
-                      <SelectItem key={subject.id} value={subject.code}>
-                        {subject.code} - {subject.name}
-                      </SelectItem>
-                    ))}
+                    {filterOptions?.subjects
+                      .filter(subject =>
+                        selectedDepartment === "All Departments" ||
+                        subject.departments.name === selectedDepartment
+                      )
+                      .map((subject) => (
+                        <SelectItem key={subject.id} value={subject.code}>
+                          {subject.code} - {subject.name}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Check, Save, Loader2 } from "lucide-react";
@@ -21,6 +22,7 @@ interface Student {
 }
 
 const MarkAttendance = ({ lecture }: { lecture: any }) => {
+  const router = useRouter();
   const [attendanceData, setAttendanceData] = useState<Student[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -35,19 +37,26 @@ const MarkAttendance = ({ lecture }: { lecture: any }) => {
         const params = new URLSearchParams();
         
         // Extract lecture details (you may need to adjust these based on your lecture object structure)
-        const division = lecture.division || '1';
-        const sem = lecture.sem || lecture.semester || '1';
-        const batch = lecture.batch;
-        const type = lecture.type; // 'lecture' or 'lab'
 
-        params.append('division', division.toString());
-        params.append('sem', sem.toString());
-        
-        if (type === 'lab' && batch) {
-          params.append('batch', batch);
-          params.append('type', 'lab');
+        const sem = lecture.sem || lecture.semester || '1';
+        const department = lecture.department || lecture.Department;
+        // If both department and sem are available, use them for the query
+        if (department && sem) {
+          params.append('department', department);
+          params.append('sem', sem.toString());
         } else {
-          params.append('type', 'lecture');
+          // fallback to division/batch/sem logic if department/sem not available
+          const division = lecture.division || '1';
+          const batch = lecture.batch;
+          const type = lecture.type; // 'lecture' or 'lab'
+          params.append('division', division.toString());
+          params.append('sem', sem.toString());
+          if (type === 'lab' && batch) {
+            params.append('batch', batch);
+            params.append('type', 'lab');
+          } else {
+            params.append('type', 'lecture');
+          }
         }
 
         const response = await fetch(`/api/students?${params.toString()}`);
@@ -142,6 +151,8 @@ const MarkAttendance = ({ lecture }: { lecture: any }) => {
       toast.success(`Attendance saved successfully for ${presentStudentUUIDs.length} students`);
       console.log("Attendance saved for students:", presentStudentUUIDs);
       console.log("API response:", result);
+      // Redirect to attendance selection page
+      router.push("/attendance-selection");
 
     } catch (error) {
       console.error("Error saving attendance:", error);

@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { 
   getStudentsByDivisionAndSem, 
-  getStudentsByDivisionBatchAndSem 
+  getStudentsByDivisionBatchAndSem, 
+  getStudentsByDepartmentAndSem 
 } from '@/app/actions/studentsApi';
+import { createClient } from '@/utils/supabase/server';
 
 export async function GET(request: NextRequest) {
   try {
@@ -11,33 +13,57 @@ export async function GET(request: NextRequest) {
     const sem = searchParams.get('sem');
     const batch = searchParams.get('batch');
     const type = searchParams.get('type'); // 'lecture' or 'lab'
+    // Accept departmentId as the query param for department UUID, but also support legacy 'department' param as either UUID or name
+    let department = searchParams.get('department');
+    let departmentName: string | undefined = undefined;
+    // if (!departmentId && departmentParam) {
+    //   if (/^[0-9a-fA-F-]{36}$/.test(departmentParam)) {
+    //     departmentId = departmentParam;
+    //   } else {
+    //     departmentName = departmentParam;
+    //   }
+    // }
 
-    if (!division || !sem) {
-      return NextResponse.json(
-        { error: 'Division and semester are required' },
-        { status: 400 }
-      );
-    }
-
-    const divisionNum = parseInt(division);
-    const semNum = parseInt(sem);
-
-    if (isNaN(divisionNum) || isNaN(semNum)) {
-      return NextResponse.json(
-        { error: 'Division and semester must be valid numbers' },
-        { status: 400 }
-      );
-    }
 
     let students;
-
-    // For labs, fetch by division, batch, and semester
-    if (type === 'lab' && batch) {
-      students = await getStudentsByDivisionBatchAndSem(divisionNum, batch, semNum);
-    } 
-    // For lectures, fetch by division and semester only
-    else {
-      students = await getStudentsByDivisionAndSem(divisionNum, semNum);
+    // If departmentId and sem are provided, use getStudentsByDepartmentAndSem
+    if (department && sem) {
+      // Fetch department name from departments table
+      const supabase = await createClient();
+      const { data: deptData, error: deptError } = await supabase
+        .from('departments')
+        .select('abbreviation_depart')
+        .eq('id', department)
+        .single();
+      if (deptError || !deptData) {
+        return NextResponse.json(
+          { error: 'Invalid department ID' },
+          { status: 400 }
+        );
+      }
+      console.log('Department Data:', deptData);
+      
+      students = await getStudentsByDepartmentAndSem(`D${deptData.abbreviation_depart}`, parseInt(sem));
+    } else if (departmentName && sem) {
+      // If department name is provided directly, use it
+      students = await getStudentsByDepartmentAndSem(departmentName, parseInt(sem));
+    } else if (division && sem) {
+      const divisionNum = parseInt(division);
+      const semNum = parseInt(sem);
+      if (isNaN(divisionNum) || isNaN(semNum)) {
+        return NextResponse.json(
+          { error: 'Division and semester must be valid numbers' },
+          { status: 400 }
+        );
+      }
+      // For labs, fetch by division, batch, and semester
+      if (type === 'lab' && batch) {
+        students = await getStudentsByDivisionBatchAndSem(divisionNum, batch, semNum);
+      } else {
+        students = await getStudentsByDivisionAndSem(divisionNum, semNum);
+      }
+    } else {
+      students = [];
     }
 
     // Transform the data to match the expected format for the component
