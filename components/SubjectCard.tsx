@@ -55,8 +55,27 @@ const SubjectCard = ({ lecture, setLecture, setShowList, setFillAttendance }: Su
     }
   };
   
-  const getFromTime = () => formatTime(lecture.from || lecture.fromTime || 'N/A');
-  const getToTime = () => formatTime(lecture.to || lecture.toTime || 'N/A');
+  // Convert UTC+0 time string (e.g., '03:40:00+00') to IST and format as HH:MM AM/PM
+  const convertToIST = (timeString: string) => {
+    if (!timeString) return 'N/A';
+    // Match HH:MM:SS
+    const match = timeString.match(/(\d{2}):(\d{2}):(\d{2})/);
+    if (!match) return timeString;
+    let hours = parseInt(match[1]);
+    let minutes = parseInt(match[2]);
+    // Add 5 hours 30 minutes for IST
+    let totalMinutes = hours * 60 + minutes + 330;
+    let istHours = Math.floor(totalMinutes / 60) % 24;
+    let istMinutes = totalMinutes % 60;
+    // Format to 12-hour
+    const ampm = istHours >= 12 ? 'PM' : 'AM';
+    let displayHour = istHours % 12;
+    if (displayHour === 0) displayHour = 12;
+    return `${displayHour.toString().padStart(2, '0')}:${istMinutes.toString().padStart(2, '0')} ${ampm}`;
+  };
+
+  const getFromTime = () => convertToIST(lecture.from || lecture.fromTime || '');
+  const getToTime = () => convertToIST(lecture.to || lecture.toTime || 'N/A');
   const getStatus = () => lecture.status || 'Pending';
 
   return (
