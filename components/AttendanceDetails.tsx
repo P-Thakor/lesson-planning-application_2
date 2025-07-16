@@ -46,7 +46,7 @@ const AttendanceDetails = ({ lecture }: { lecture: any }) => {
   const getFromTime = () => formatTime(lecture.from || lecture.fromTime || 'N/A');
   const getToTime = () => formatTime(lecture.to || lecture.toTime || 'N/A');
   const getFacultyName = () => lecture.faculty_name || lecture.facultyName || 'Unknown Faculty';
-  const getRoom = () => lecture.Room || lecture.room || 'Lab';
+  const getRoom = () => lecture.Location || lecture.location || 'Lab';
 
   return (
     <div className="bg-white shadow-sm rounded-lg p-6 w-full">

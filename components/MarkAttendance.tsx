@@ -278,13 +278,13 @@ const MarkAttendance = ({ lecture }: { lecture: any }) => {
                   </button>
                 </div>
                 <div className="p-3 flex justify-center items-center">
-                  <div className="w-32 h-10 border rounded-md text-sm font-semibold flex items-center justify-center">
+                  <div className="w-32 h-10 border rounded-md text-xs font-semibold flex  items-center justify-start">
                     {student.name}
                   </div>
                 </div>
                 <div className="p-3 flex justify-center items-center">
-                  <div className="w-32 h-10 border rounded-md font-semibold text-sm flex items-center justify-center">
-                    {student.counselorName}
+                  <div className="w-32 h-10 border rounded-md font-semibold text-xs flex items-center justify-center">
+                    {student.counselorName.split(' ')[0]} {student.counselorName.split(' ')[2]}
                   </div>
                 </div>
               </div>
